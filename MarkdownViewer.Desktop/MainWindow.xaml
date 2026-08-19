@@ -5,18 +5,35 @@
         Title="Markdown Viewer"
         Height="900" Width="1440"
         MinHeight="480" MinWidth="640"
-        Background="#0F172A">
-    <Grid>
-        <!-- Shown until the in-process backend has started and the first navigation completes. -->
-        <StackPanel x:Name="LoadingPanel"
-                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Visibility="Visible">
-            <TextBlock Text="Starting Markdown Viewer…"
-                       Foreground="#94A3B8"
-                       FontFamily="Segoe UI"
-                       FontSize="14" />
-        </StackPanel>
+        Background="#0F172A"
+        AllowDrop="True"
+        PreviewDragOver="Window_PreviewDragOver"
+        Drop="Window_Drop">
+    <Window.InputBindings>
+        <KeyBinding Key="O" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Open}" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="OpenCommand_Executed" />
+    </Window.CommandBindings>
+    <DockPanel>
+        <Menu DockPanel.Dock="Top" Background="#0F172A">
+            <MenuItem Header="_File" Foreground="White">
+                <MenuItem Header="_Open…" Command="{x:Static ApplicationCommands.Open}" InputGestureText="Ctrl+O" />
+            </MenuItem>
+        </Menu>
 
-        <wv2:WebView2 x:Name="WebView" Visibility="Collapsed" />
-    </Grid>
+        <Grid>
+            <!-- Shown until the in-process backend has started and the first navigation completes. -->
+            <StackPanel x:Name="LoadingPanel"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="Visible">
+                <TextBlock Text="Starting Markdown Viewer…"
+                           Foreground="#94A3B8"
+                           FontFamily="Segoe UI"
+                           FontSize="14" />
+            </StackPanel>
+
+            <wv2:WebView2 x:Name="WebView" Visibility="Collapsed" />
+        </Grid>
+    </DockPanel>
 </Window>

@@ -36,6 +36,9 @@
     editToggleBtn: $("#edit-toggle-btn"),
     saveBtn: $("#save-btn"),
     themeToggleBtn: $("#theme-toggle-btn"),
+    themePicker: $("#theme-picker"),
+    themeMenu: $("#theme-menu"),
+    openFileBtn: $("#open-file-btn"),
     newFileBtn: $("#new-file-btn"),
     toast: $("#toast"),
   };
@@ -97,38 +100,97 @@
   // Theme
   // ==========================================================================
 
+  const THEMES = [
+    { id: "light", label: "Light", dark: false, swatchBg: "#fdfbf7", swatchFg: "#15803d" },
+    { id: "dark", label: "Dark", dark: true, swatchBg: "#0e1522", swatchFg: "#2fd66b" },
+    { id: "sepia", label: "Sepia", dark: false, swatchBg: "#f4ecd8", swatchFg: "#15803d" },
+    { id: "slate", label: "Slate", dark: true, swatchBg: "#1c2330", swatchFg: "#34d399" },
+  ];
+
   function currentTheme() {
     return document.documentElement.getAttribute("data-theme") || "light";
+  }
+
+  function isDarkTheme(themeId) {
+    return THEMES.find((t) => t.id === themeId)?.dark ?? false;
   }
 
   function applyTheme(theme) {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("md-viewer-theme", theme);
+    const dark = isDarkTheme(theme);
 
     const lightLink = $("#hljs-theme-light");
     const darkLink = $("#hljs-theme-dark");
-    lightLink.disabled = theme === "dark";
-    darkLink.disabled = theme !== "dark";
+    lightLink.disabled = dark;
+    darkLink.disabled = !dark;
 
     if (window.mermaid) {
-      mermaid.initialize({ startOnLoad: false, theme: theme === "dark" ? "dark" : "default", securityLevel: "loose", fontFamily: "IBM Plex Sans" });
+      mermaid.initialize({ startOnLoad: false, theme: dark ? "dark" : "default", securityLevel: "loose", fontFamily: "IBM Plex Sans" });
       document.querySelectorAll(".prose").forEach(runMermaid);
     }
 
     if (cmInstance) {
-      cmInstance.setOption("theme", theme === "dark" ? "material-darker" : "default");
+      cmInstance.setOption("theme", dark ? "material-darker" : "default");
     }
+
+    renderThemeMenu();
+  }
+
+  function renderThemeMenu() {
+    const active = currentTheme();
+    els.themeMenu.innerHTML = THEMES.map((t) => `
+      <li>
+        <button type="button" class="theme-menu__item${t.id === active ? " is-active" : ""}" role="menuitemradio" aria-checked="${t.id === active}" data-theme-id="${t.id}">
+          <span class="theme-menu__swatch" style="--swatch-bg:${t.swatchBg};--swatch-fg:${t.swatchFg}"></span>
+          ${t.label}
+        </button>
+      </li>`).join("");
+  }
+
+  function openThemeMenu() {
+    els.themeMenu.hidden = false;
+    els.themeToggleBtn.setAttribute("aria-expanded", "true");
+  }
+  function closeThemeMenu() {
+    els.themeMenu.hidden = true;
+    els.themeToggleBtn.setAttribute("aria-expanded", "false");
   }
 
   function initTheme() {
     const saved = localStorage.getItem("md-viewer-theme");
     const preferred = saved || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    applyTheme(preferred);
+    applyTheme(THEMES.some((t) => t.id === preferred) ? preferred : "light");
   }
 
-  els.themeToggleBtn.addEventListener("click", () => {
-    applyTheme(currentTheme() === "dark" ? "light" : "dark");
+  els.themeToggleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.themeMenu.hidden ? openThemeMenu() : closeThemeMenu();
   });
+  els.themeMenu.addEventListener("click", (e) => {
+    const btn = e.target.closest(".theme-menu__item");
+    if (!btn) return;
+    applyTheme(btn.dataset.themeId);
+    closeThemeMenu();
+  });
+  document.addEventListener("click", (e) => {
+    if (!els.themePicker.contains(e.target)) closeThemeMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeThemeMenu();
+  });
+
+  // ==========================================================================
+  // Open file (desktop shell only)
+  // ==========================================================================
+
+  const desktopHost = window.chrome && window.chrome.webview;
+  if (desktopHost) {
+    els.openFileBtn.hidden = false;
+    els.openFileBtn.addEventListener("click", () => {
+      desktopHost.postMessage(JSON.stringify({ type: "open-file" }));
+    });
+  }
 
   // ==========================================================================
   // Rendering helpers (highlight.js / mermaid / KaTeX / heading anchors)
@@ -461,7 +523,7 @@
     host.value = state.raw;
     cmInstance = CodeMirror.fromTextArea(host, {
       mode: "markdown",
-      theme: currentTheme() === "dark" ? "material-darker" : "default",
+      theme: isDarkTheme(currentTheme()) ? "material-darker" : "default",
       lineNumbers: true,
       lineWrapping: true,
       viewportMargin: Infinity,

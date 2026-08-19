@@ -1,10 +1,14 @@
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
+using System.Windows.Input;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Win32;
 using MarkdownViewer;
+using MarkdownViewer.Services;
 
 namespace MarkdownViewer.Desktop;
 
@@ -12,6 +16,8 @@ public partial class MainWindow : Window
 {
     private readonly string? _filePath;
     private WebApplication? _app;
+    private CoreWebView2Environment? _webViewEnvironment;
+    private bool _webViewReady;
 
     public MainWindow(string? filePath)
     {
@@ -23,9 +29,28 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        await OpenAsync(_filePath);
+    }
+
+    /// <summary>
+    /// (Re)starts the in-process backend rooted at the file's folder (or the notes folder as a
+    /// fallback) and navigates the WebView there. Used both for the initial launch and whenever
+    /// the user opens a different file via the Open dialog or drag-and-drop.
+    /// </summary>
+    private async Task OpenAsync(string? filePath)
+    {
         try
         {
-            var (rootPath, openRelativePath) = ResolveWorkspace(_filePath);
+            var (rootPath, openRelativePath) = ResolveWorkspace(filePath);
+
+            WebView.Visibility = Visibility.Collapsed;
+            LoadingPanel.Visibility = Visibility.Visible;
+
+            if (_app is not null)
+            {
+                try { await _app.StopAsync(TimeSpan.FromSeconds(2)); }
+                catch { /* best-effort shutdown of the previous instance */ }
+            }
 
             // Bind to an OS-assigned free port on loopback only -- this window is the only client.
             _app = AppHost.Build(
@@ -41,22 +66,28 @@ public partial class MainWindow : Window
                 ? baseAddress
                 : $"{baseAddress}/#open={Uri.EscapeDataString(openRelativePath)}";
 
-            // Keep the WebView2 user data folder somewhere writable regardless of where the
-            // exe is installed (e.g. Program Files, which is read-only for normal users).
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "MarkdownViewer", "WebView2");
-            Directory.CreateDirectory(userDataFolder);
+            if (!_webViewReady)
+            {
+                // Keep the WebView2 user data folder somewhere writable regardless of where the
+                // exe is installed (e.g. Program Files, which is read-only for normal users).
+                var userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MarkdownViewer", "WebView2");
+                Directory.CreateDirectory(userDataFolder);
 
-            var environment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
-            await WebView.EnsureCoreWebView2Async(environment);
+                _webViewEnvironment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
+                await WebView.EnsureCoreWebView2Async(_webViewEnvironment);
+                WebView.CoreWebView2.WebMessageReceived += WebView_WebMessageReceived;
+                _webViewReady = true;
+            }
 
             WebView.Source = new Uri(url);
             WebView.Visibility = Visibility.Visible;
             LoadingPanel.Visibility = Visibility.Collapsed;
 
-            if (openRelativePath != null)
-                Title = $"{Path.GetFileName(openRelativePath)} — Markdown Viewer";
+            Title = openRelativePath != null
+                ? $"{Path.GetFileName(openRelativePath)} — Markdown Viewer"
+                : "Markdown Viewer";
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -70,6 +101,73 @@ public partial class MainWindow : Window
         {
             ShowStartupError($"Markdown Viewer couldn't start:\n\n{ex.Message}");
         }
+    }
+
+    private void OpenCommand_Executed(object sender, ExecutedRoutedEventArgs e) => ShowOpenFileDialog();
+
+    /// <summary>
+    /// Handles messages posted from the web frontend (window.chrome.webview.postMessage), e.g.
+    /// the in-page "Open" button, since the frontend itself has no filesystem access.
+    /// </summary>
+    private void WebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            var json = e.WebMessageAsJson;
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("type", out var typeProp) && typeProp.GetString() == "open-file")
+            {
+                ShowOpenFileDialog();
+            }
+        }
+        catch { /* ignore malformed messages */ }
+    }
+
+    private void ShowOpenFileDialog()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Open Markdown File",
+            Filter = "Markdown files (*.md;*.markdown;*.mdx)|*.md;*.markdown;*.mdx|All files (*.*)|*.*",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            _ = OpenAsync(dialog.FileName);
+        }
+    }
+
+    private void Window_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = TryGetDroppedMarkdownFile(e, out _) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Window_Drop(object sender, DragEventArgs e)
+    {
+        if (TryGetDroppedMarkdownFile(e, out var path))
+        {
+            _ = OpenAsync(path);
+        }
+        e.Handled = true;
+    }
+
+    private static bool TryGetDroppedMarkdownFile(DragEventArgs e, out string? path)
+    {
+        path = null;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+            return false;
+
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0)
+            return false;
+
+        var candidate = files.FirstOrDefault(f => File.Exists(f) && WorkspaceService.IsMarkdownFile(f));
+        if (candidate is null)
+            return false;
+
+        path = candidate;
+        return true;
     }
 
     private void ShowStartupError(string message)
