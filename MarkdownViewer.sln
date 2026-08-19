@@ -1,0 +1,28 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarkdownViewer", "MarkdownViewer\MarkdownViewer.csproj", "{68BC8F1D-9538-4F65-B510-945E601E94B0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarkdownViewer.Desktop", "MarkdownViewer.Desktop\MarkdownViewer.Desktop.csproj", "{A2C1F9E2-7B3D-4C6A-9E1F-2D5B8C4A6F10}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{68BC8F1D-9538-4F65-B510-945E601E94B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68BC8F1D-9538-4F65-B510-945E601E94B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68BC8F1D-9538-4F65-B510-945E601E94B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68BC8F1D-9538-4F65-B510-945E601E94B0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A2C1F9E2-7B3D-4C6A-9E1F-2D5B8C4A6F10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2C1F9E2-7B3D-4C6A-9E1F-2D5B8C4A6F10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2C1F9E2-7B3D-4C6A-9E1F-2D5B8C4A6F10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2C1F9E2-7B3D-4C6A-9E1F-2D5B8C4A6F10}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

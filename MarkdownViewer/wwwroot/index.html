@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Markdown Viewer</title>
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='2'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Cpath d='M7 15l3-3-3-3M12 15h4'/%3E%3C/svg%3E" />
+
+<!-- Fonts (self-hosted, no external CDN required) -->
+<link rel="stylesheet" href="css/fonts.css" />
+
+<!-- highlight.js (code syntax highlighting) -->
+<link id="hljs-theme-light" rel="stylesheet" href="vendor/hljs/styles/github.min.css" />
+<link id="hljs-theme-dark" rel="stylesheet" href="vendor/hljs/styles/github-dark.min.css" disabled />
+<script src="vendor/hljs/hljs.min.js"></script>
+
+<!-- KaTeX (math typesetting) -->
+<link rel="stylesheet" href="vendor/katex/katex.min.css" />
+<script src="vendor/katex/katex.min.js"></script>
+<script src="vendor/katex/auto-render.min.js"></script>
+
+<!-- Mermaid (diagrams) -->
+<script src="vendor/mermaid/mermaid.min.js"></script>
+
+<!-- CodeMirror 5 (markdown editor) -->
+<link rel="stylesheet" href="vendor/codemirror/codemirror.css" />
+<link rel="stylesheet" href="vendor/codemirror/theme/material-darker.css" />
+<script src="vendor/codemirror/codemirror.js"></script>
+<script src="vendor/codemirror/mode/markdown/markdown.js"></script>
+<script src="vendor/codemirror/mode/xml/xml.js"></script>
+<script src="vendor/codemirror/addon/edit/continuelist.js"></script>
+<script src="vendor/codemirror/addon/display/placeholder.js"></script>
+
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ Sidebar ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar__brand">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z" stroke-linejoin="round"/><path d="M7 15l3-3-3-3M12 15h4"/></svg>
+      <span>Markdown Viewer</span>
+    </div>
+    <div class="sidebar__search">
+      <label class="search-box">
+        <svg class="icon" viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="search-input" type="text" placeholder="Search files…" autocomplete="off" aria-label="Search markdown files" />
+        <kbd>⌘K</kbd>
+      </label>
+    </div>
+    <div class="sidebar__scroll">
+      <div id="tree-container" aria-label="File tree"></div>
+      <div id="search-results-container" hidden></div>
+    </div>
+    <div class="sidebar__footer">
+      <button class="btn" id="new-file-btn" style="flex:1" title="Create a new markdown file">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        New file
+      </button>
+    </div>
+  </aside>
+
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ============ Top bar ============ -->
+  <header class="topbar">
+    <button class="btn btn--icon sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+      <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="topbar__path" id="topbar-path">
+      <span>Select a file from the sidebar to begin</span>
+    </div>
+    <span class="topbar__meta" id="topbar-meta"></span>
+    <div class="topbar__actions">
+      <button class="btn btn--icon" id="edit-toggle-btn" title="Toggle edit mode (Ctrl/Cmd+E)" disabled>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      </button>
+      <button class="btn btn--primary" id="save-btn" title="Save (Ctrl/Cmd+S)" hidden>
+        <svg class="icon" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+        Save
+      </button>
+      <button class="btn btn--icon" id="theme-toggle-btn" title="Toggle theme">
+        <svg class="icon" id="theme-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ Main ============ -->
+  <main class="main" id="main">
+    <div class="reader" id="empty-reader">
+      <div class="empty-state">
+        <svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h5"/></svg>
+        <h2>No file open</h2>
+        <p>Pick a markdown file from the sidebar, or press <kbd>⌘K</kbd> to search across your workspace.</p>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>MarkdownViewer.Desktop</AssemblyName>
+    <RootNamespace>MarkdownViewer.Desktop</RootNamespace>
+    <ApplicationTitle>Markdown Viewer</ApplicationTitle>
+    <!-- Windows passes the double-clicked / "Open with" file as argv[0]; make sure it survives. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebView2: hosts the same web frontend used by the standalone web app, inside a native window. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reuses AppHost.Build(...) and the whole Markdig-based rendering pipeline in-process:
+         no separate server process, no port conflicts to manage by hand. -->
+    <ProjectReference Include="..\MarkdownViewer\MarkdownViewer.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The web project's wwwroot (including the vendored highlight.js/KaTeX/Mermaid/CodeMirror
+         and fonts) is linked in here so it ships next to MarkdownViewer.Desktop.exe. A
+         ProjectReference alone does NOT copy a referenced project's content files. -->
+    <Content Include="..\MarkdownViewer\wwwroot\**\*.*">
+      <Link>wwwroot\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
