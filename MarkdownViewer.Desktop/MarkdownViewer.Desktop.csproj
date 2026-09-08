@@ -9,9 +9,14 @@
     <AssemblyName>MarkdownViewer.Desktop</AssemblyName>
     <RootNamespace>MarkdownViewer.Desktop</RootNamespace>
     <ApplicationTitle>Markdown Viewer</ApplicationTitle>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <!-- Windows passes the double-clicked / "Open with" file as argv[0]; make sure it survives. -->
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- WebView2: hosts the same web frontend used by the standalone web app, inside a native window. -->

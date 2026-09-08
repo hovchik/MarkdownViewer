@@ -1,8 +1,10 @@
 <Window x:Class="MarkdownViewer.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MarkdownViewer.Desktop"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="Markdown Viewer"
+        Icon="Assets/AppIcon.ico"
         Height="900" Width="1440"
         MinHeight="480" MinWidth="640"
         Background="#0F172A"
@@ -11,14 +13,152 @@
         Drop="Window_Drop">
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Open}" />
+        <KeyBinding Key="O" Modifiers="Ctrl+Shift" Command="{x:Static local:MainWindow.OpenFolderCommand}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="OpenCommand_Executed" />
+        <CommandBinding Command="{x:Static local:MainWindow.OpenFolderCommand}" Executed="OpenFolderCommand_Executed" />
     </Window.CommandBindings>
+    <Window.Resources>
+        <!-- The stock Menu/MenuItem chrome pulls its popup Background/Foreground from theme
+             resources that vary by Windows theme (classic vs. Aero2 vs. Fluent) and don't
+             reliably respond to SystemColors overrides, which was causing white text on a
+             white/light popup background ("white-on-white"). To guarantee correct, consistent
+             contrast regardless of the active Windows theme, the Menu/MenuItem chrome below is
+             fully templated with the app's own dark colors instead of relying on themed
+             defaults. The templates are intentionally simple (no theme animations/visual state
+             groups) which also keeps menu interaction lightweight. -->
+        <SolidColorBrush x:Key="Menu.Bg" Color="#16202F" />
+        <SolidColorBrush x:Key="Menu.Fg" Color="White" />
+        <SolidColorBrush x:Key="Menu.Border" Color="#34415E" />
+        <SolidColorBrush x:Key="Menu.HighlightBg" Color="#15803D" />
+        <SolidColorBrush x:Key="Menu.DisabledFg" Color="#8B98AC" />
+
+        <Style x:Key="MenuItemIconContainer" TargetType="ContentControl">
+            <Setter Property="Width" Value="20" />
+        </Style>
+
+        <ControlTemplate x:Key="TopLevelMenuItemTemplate" TargetType="MenuItem">
+            <Border x:Name="Border" Background="Transparent" Padding="8,4">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource Menu.HighlightBg}" />
+                </Trigger>
+                <Trigger Property="IsSubmenuOpen" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource Menu.HighlightBg}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="SubmenuItemTemplate" TargetType="MenuItem">
+            <Border x:Name="Border" Background="Transparent">
+                <Grid Margin="4,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="18" />
+                    </Grid.ColumnDefinitions>
+                    <ContentPresenter Grid.Column="0" ContentSource="Icon" VerticalAlignment="Center" HorizontalAlignment="Center" />
+                    <ContentPresenter Grid.Column="1" ContentSource="Header" RecognizesAccessKey="True"
+                                       VerticalAlignment="Center" Margin="6,6,16,6" />
+                    <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                               Foreground="{StaticResource Menu.DisabledFg}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Popup x:Name="Popup" Placement="Right" IsOpen="{TemplateBinding IsSubmenuOpen}"
+                           AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                        <Border Background="{StaticResource Menu.Bg}" BorderBrush="{StaticResource Menu.Border}"
+                                BorderThickness="1" Padding="2">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </Popup>
+                </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource Menu.HighlightBg}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource Menu.DisabledFg}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="TopLevelHeaderTemplate" TargetType="MenuItem">
+            <Border x:Name="Border" Background="Transparent" Padding="8,4">
+                <Grid>
+                    <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center" />
+                    <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsSubmenuOpen}"
+                           AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                        <Border Background="{StaticResource Menu.Bg}" BorderBrush="{StaticResource Menu.Border}"
+                                BorderThickness="1" Padding="2" MinWidth="220">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </Popup>
+                </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource Menu.HighlightBg}" />
+                </Trigger>
+                <Trigger Property="IsSubmenuOpen" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="{StaticResource Menu.HighlightBg}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{StaticResource Menu.Fg}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Style.Triggers>
+                <Trigger Property="Role" Value="TopLevelHeader">
+                    <Setter Property="Template" Value="{StaticResource TopLevelHeaderTemplate}" />
+                </Trigger>
+                <Trigger Property="Role" Value="TopLevelItem">
+                    <Setter Property="Template" Value="{StaticResource TopLevelMenuItemTemplate}" />
+                </Trigger>
+                <Trigger Property="Role" Value="SubmenuHeader">
+                    <Setter Property="Template" Value="{StaticResource SubmenuItemTemplate}" />
+                </Trigger>
+                <Trigger Property="Role" Value="SubmenuItem">
+                    <Setter Property="Template" Value="{StaticResource SubmenuItemTemplate}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="Separator">
+            <Setter Property="Background" Value="{StaticResource Menu.Border}" />
+            <Setter Property="Margin" Value="4,2" />
+        </Style>
+    </Window.Resources>
     <DockPanel>
         <Menu DockPanel.Dock="Top" Background="#0F172A">
-            <MenuItem Header="_File" Foreground="White">
-                <MenuItem Header="_Open…" Command="{x:Static ApplicationCommands.Open}" InputGestureText="Ctrl+O" />
+            <MenuItem Header="_File"
+                      SubmenuOpened="FileMenu_SubmenuOpened"
+                      SubmenuClosed="FileMenu_SubmenuClosed">
+                <MenuItem Header="_Open File…" Command="{x:Static ApplicationCommands.Open}" InputGestureText="Ctrl+O">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE8E5;" FontFamily="Segoe MDL2 Assets" />
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Open _Folder…" Command="{x:Static local:MainWindow.OpenFolderCommand}" InputGestureText="Ctrl+Shift+O">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" />
+                    </MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="_Recent Files" x:Name="RecentFilesMenu" SubmenuOpened="RecentFilesMenu_SubmenuOpened">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE81C;" FontFamily="Segoe MDL2 Assets" />
+                    </MenuItem.Icon>
+                    <MenuItem Header="No recent files" IsEnabled="False" />
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="E_xit" Click="Exit_Click">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" />
+                    </MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
         </Menu>
 

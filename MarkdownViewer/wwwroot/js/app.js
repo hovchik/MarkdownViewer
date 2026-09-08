@@ -188,7 +188,11 @@
   if (desktopHost) {
     els.openFileBtn.hidden = false;
     els.openFileBtn.addEventListener("click", () => {
-      desktopHost.postMessage(JSON.stringify({ type: "open-file" }));
+      // Post a plain object, not a JSON string: WebView2's WebMessageAsJson on the C# side
+      // reflects whatever was posted, so postMessage(JSON.stringify(...)) would arrive there
+      // as a JSON-encoded *string* (double-encoded), not a JSON object, making
+      // `type` property lookups fail silently.
+      desktopHost.postMessage({ type: "open-file" });
     });
   }
 

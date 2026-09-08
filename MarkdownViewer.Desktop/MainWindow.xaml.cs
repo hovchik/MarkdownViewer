@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
@@ -14,10 +15,14 @@ namespace MarkdownViewer.Desktop;
 
 public partial class MainWindow : Window
 {
+    /// <summary>Custom command for "Open Folder…", since WPF has no built-in ApplicationCommand for it.</summary>
+    public static readonly RoutedCommand OpenFolderCommand = new("OpenFolder", typeof(MainWindow));
+
     private readonly string? _filePath;
     private WebApplication? _app;
     private CoreWebView2Environment? _webViewEnvironment;
     private bool _webViewReady;
+    private string? _currentRootPath;
 
     public MainWindow(string? filePath)
     {
@@ -33,16 +38,27 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// (Re)starts the in-process backend rooted at the file's folder (or the notes folder as a
-    /// fallback) and navigates the WebView there. Used both for the initial launch and whenever
-    /// the user opens a different file via the Open dialog or drag-and-drop.
+    /// Resolves the given file path to a workspace (its containing folder) and opens it.
+    /// Used for the initial launch and whenever the user opens a different file via the
+    /// Open dialog, Recent Files, or drag-and-drop.
     /// </summary>
-    private async Task OpenAsync(string? filePath)
+    private Task OpenAsync(string? filePath)
+    {
+        var (rootPath, openRelativePath) = ResolveWorkspace(filePath);
+        return OpenWorkspaceAsync(rootPath, openRelativePath);
+    }
+
+    /// <summary>Opens a folder directly as the workspace root, with no specific file selected.</summary>
+    private Task OpenFolderAsync(string folderPath) => OpenWorkspaceAsync(folderPath, null);
+
+    /// <summary>
+    /// (Re)starts the in-process backend rooted at <paramref name="rootPath"/> and navigates the
+    /// WebView there, optionally deep-linking straight to <paramref name="openRelativePath"/>.
+    /// </summary>
+    private async Task OpenWorkspaceAsync(string rootPath, string? openRelativePath)
     {
         try
         {
-            var (rootPath, openRelativePath) = ResolveWorkspace(filePath);
-
             WebView.Visibility = Visibility.Collapsed;
             LoadingPanel.Visibility = Visibility.Visible;
 
@@ -78,6 +94,24 @@ public partial class MainWindow : Window
                 _webViewEnvironment = await CoreWebView2Environment.CreateAsync(userDataFolder: userDataFolder);
                 await WebView.EnsureCoreWebView2Async(_webViewEnvironment);
                 WebView.CoreWebView2.WebMessageReceived += WebView_WebMessageReceived;
+
+                // WebView2 hosts its own native child HWND with its own OLE drop-target
+                // registration, so OS file drops over its surface never reach WPF's Window.Drop
+                // at all (setting AllowExternalDrop=false only suppresses WebView2's default
+                // "navigate to file://" behavior -- it doesn't hand the event back to WPF).
+                // Instead, let WebView2 keep handling the drop, but intercept the resulting
+                // file:// navigation and redirect it through the same OpenAsync path used by
+                // File > Open, so a dropped markdown file opens exactly like it, complete with
+                // being added to the left sidebar's workspace tree.
+                WebView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
+
+                // For some drop sources/positions WebView2 doesn't navigate the current
+                // document at all -- it instead requests a brand new top-level WebView2 popup
+                // window pointed at the dropped file's file:// URL (this is what produced the
+                // separate mini-browser window with its own toolbar/tabs). Intercept that too,
+                // and reroute it the same way instead of letting a second window appear.
+                WebView.CoreWebView2.NewWindowRequested += CoreWebView2_NewWindowRequested;
+
                 _webViewReady = true;
             }
 
@@ -85,9 +119,17 @@ public partial class MainWindow : Window
             WebView.Visibility = Visibility.Visible;
             LoadingPanel.Visibility = Visibility.Collapsed;
 
-            Title = openRelativePath != null
-                ? $"{Path.GetFileName(openRelativePath)} — Markdown Viewer"
-                : "Markdown Viewer";
+            _currentRootPath = rootPath;
+
+            if (openRelativePath != null)
+            {
+                Title = $"{Path.GetFileName(openRelativePath)} — Markdown Viewer";
+                RecentFilesStore.Add(Path.Combine(rootPath, openRelativePath));
+            }
+            else
+            {
+                Title = $"{Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar))} — Markdown Viewer";
+            }
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -104,6 +146,100 @@ public partial class MainWindow : Window
     }
 
     private void OpenCommand_Executed(object sender, ExecutedRoutedEventArgs e) => ShowOpenFileDialog();
+
+    private void OpenFolderCommand_Executed(object sender, ExecutedRoutedEventArgs e) => ShowOpenFolderDialog();
+
+    /// <summary>
+    /// When a file is dropped onto the WebView2 surface, WebView2's own drop handling tries to
+    /// navigate to the dropped file's file:// URL (which would render it as raw text/binary
+    /// instead of through the app). Cancel that navigation for markdown files and open them
+    /// through the normal workspace-switching path instead -- identical to File > Open, so the
+    /// file also gets added to the left sidebar tree.
+    /// </summary>
+    private void CoreWebView2_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) || !uri.IsFile)
+            return;
+
+        var localPath = uri.LocalPath;
+        if (!File.Exists(localPath) || !WorkspaceService.IsMarkdownFile(localPath))
+            return;
+
+        e.Cancel = true;
+        _ = OpenAsync(localPath);
+    }
+
+    /// <summary>
+    /// Handles the case where WebView2 responds to a dropped file by requesting an entirely new
+    /// top-level popup window (its own mini-browser chrome) navigated to the file's file:// URL,
+    /// rather than navigating the existing document. Suppress that popup and open the file
+    /// through the normal workspace-switching path in this window instead.
+    /// </summary>
+    private void CoreWebView2_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) && uri.IsFile)
+        {
+            var localPath = uri.LocalPath;
+            if (File.Exists(localPath) && WorkspaceService.IsMarkdownFile(localPath))
+                _ = OpenAsync(localPath);
+        }
+
+        e.Handled = true;
+    }
+
+    private void RecentFileMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string path })
+            _ = OpenAsync(path);
+    }
+
+    private bool _webViewVisibleBeforeMenu;
+
+    /// <summary>
+    /// WebView2 renders in its own child HWND, which sits in a different "airspace" than WPF's
+    /// own rendering surface. That breaks hit-testing/visuals for WPF popups (menu flyouts,
+    /// submenus, tooltips) drawn on top of it -- clicks pass straight through to the page below.
+    /// Hiding the WebView for the duration the menu is open is the standard workaround.
+    /// </summary>
+    private void FileMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        // SubmenuOpened/Closed bubble up from nested submenus (e.g. Recent Files) too; only react
+        // to the top-level File menu itself opening/closing.
+        if (!ReferenceEquals(e.OriginalSource, sender)) return;
+
+        _webViewVisibleBeforeMenu = WebView.Visibility == Visibility.Visible;
+        WebView.Visibility = Visibility.Hidden;
+    }
+
+    private void FileMenu_SubmenuClosed(object sender, RoutedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, sender)) return;
+
+        if (_webViewVisibleBeforeMenu)
+            WebView.Visibility = Visibility.Visible;
+    }
+
+    private void RecentFilesMenu_SubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem menu) return;
+
+        menu.Items.Clear();
+        var recent = RecentFilesStore.Load();
+        if (recent.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "No recent files", IsEnabled = false });
+            return;
+        }
+
+        foreach (var path in recent)
+        {
+            var item = new MenuItem { Header = path, Tag = path };
+            item.Click += RecentFileMenuItem_Click;
+            menu.Items.Add(item);
+        }
+    }
+
+    private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>
     /// Handles messages posted from the web frontend (window.chrome.webview.postMessage), e.g.
@@ -129,12 +265,31 @@ public partial class MainWindow : Window
         {
             Title = "Open Markdown File",
             Filter = "Markdown files (*.md;*.markdown;*.mdx)|*.md;*.markdown;*.mdx|All files (*.*)|*.*",
-            CheckFileExists = true
+            CheckFileExists = true,
+            InitialDirectory = _currentRootPath is not null && Directory.Exists(_currentRootPath)
+                ? _currentRootPath
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
         };
 
         if (dialog.ShowDialog(this) == true)
         {
             _ = OpenAsync(dialog.FileName);
+        }
+    }
+
+    private void ShowOpenFolderDialog()
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Open Workspace Folder",
+            InitialDirectory = _currentRootPath is not null && Directory.Exists(_currentRootPath)
+                ? _currentRootPath
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            _ = OpenFolderAsync(dialog.FolderName);
         }
     }
 
